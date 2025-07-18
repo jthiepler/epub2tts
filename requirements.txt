@@ -1,5 +1,4 @@
 beautifulsoup4
-coqui-tts
 deepspeed
 ebooklib
 edge-tts
@@ -27,3 +26,8 @@ tqdm
 transformers==4.40.2
 unidecode
 moshi
+moshi_mlx>=0.2.11
+mlx
+sphn
+sentencepiece
+sounddevice

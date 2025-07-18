@@ -31,6 +31,7 @@ ENGINE_SPEAKERS = {
     "edge": ["en-US-AriaNeural", "en-US-JennyNeural", "en-US-GuyNeural", "en-US-AriaRUS", "en-US-BenjaminRUS", "en-US-GuyRUS", "en-US-ZiraRUS", "en-US-JessaRUS", "en-US-Jessa24kRUS", "en-US-Sean", "en-US-Jason", "en-US-Cora", "en-US-Jane", "en-US-Tony", "en-US-Amber", "en-US-Ana", "en-US-Ashley", "en-US-Brandon", "en-US-Christopher", "en-US-Davis", "en-US-Elizabeth", "en-US-Jacob", "en-US-JennyMultilingualNeural", "en-US-Michelle", "en-US-Monica", "en-US-Roger", "en-US-Steffan", "en-US-AndrewNeural", "en-US-EmmaNeural", "en-US-BrianNeural", "en-US-AriaNeural", "en-US-JennyNeural", "en-US-GuyNeural"],
     "kokoro": ["af_sky", "af_bella", "af_sarah", "am_adam", "bf_emma", "bm_george", "af_nicole", "am_michael", "af_sky", "af_bella", "af_sarah", "am_adam", "bf_emma", "bm_george", "af_nicole", "am_michael"],
     "kyutai": KYUTAI_VOICES,
+    "kyutai-mlx": KYUTAI_VOICES,
     "xtts": ["Claribel Dervla", "Daisy Studious", "Gracie Wise", "Tammie Ema", "Alison Dietlinde", "Ana Florence", "Annmarie Nele", "Asya Anara", "Brenda Stern", "Gitta Nikolina", "Henriette Usha", "Sofia Hellen", "Tammy Grit", "Tanja Adelina", "Vjollca Johnnie", "Andrew Chipper", "Badr Odhiambo", "Dionisio Schuyler", "Royston Min", "Viktor Eka", "Abrahan Mack", "Adde Michal", "Baldur Sanjin", "Craig Gutsy", "Damien Black", "Gilberto Mathias", "Ilkin Urbano", "Kazuhiko Atallah", "Ludvig Milivoj", "Suad Qasim", "Torcull Diarmuid", "Viktor Menelaos", "Zacharie Aimilios"]
 }
 
@@ -46,7 +47,7 @@ class Epub2TTSInterface:
     def convert_epub(self, epub_file, engine, speaker, start_chapter, end_chapter, 
                     threads, output_format, bitrate, min_ratio, debug, skiplinks, 
                     skipfootnotes, sayparts, no_deepspeed, skip_cleanup, openai_key, 
-                    xtts_samples, speed, kyutai_cpu, progress=gr.Progress()):
+                    xtts_samples, speed, kyutai_cpu, kyutai_mlx_quantization, progress=gr.Progress()):
         """Main conversion function with real-time output streaming"""
         
         if not epub_file:
@@ -97,6 +98,7 @@ class Epub2TTSInterface:
             args.scan = False
             args.export = None
             args.cover = None
+            args.kyutai_mlx_quantization = kyutai_mlx_quantization
             
             # Create audiobook
             mybook = EpubToAudiobook(
@@ -116,6 +118,7 @@ class Epub2TTSInterface:
                 skip_cleanup=args.skip_cleanup,
                 audioformat=args.audioformat,
                 speed=args.speed,
+                kyutai_mlx_quantization=kyutai_mlx_quantization,
             )
             
             # Get chapters
@@ -322,6 +325,14 @@ def create_interface():
                         value=False,
                         info="Force CPU mode to avoid CUDA memory issues"
                     )
+                    
+                    kyutai_mlx_quantization = gr.Dropdown(
+                        choices=["None", "8-bit", "4-bit"],
+                        value="None",
+                        label="Kyutai MLX Quantization",
+                        visible=False,
+                        info="Select quantization for Kyutai MLX"
+                    )
                 
                 # Basic settings
                 with gr.Row():
@@ -415,11 +426,13 @@ def create_interface():
             show_xtts = engine == "xtts"
             show_speed = engine == "kokoro"
             show_kyutai_cpu = engine == "kyutai"
+            show_kyutai_mlx_quantization = engine == "kyutai-mlx"
             return [
                 gr.Textbox(visible=show_openai),
                 gr.Textbox(visible=show_xtts),
                 gr.Number(visible=show_speed),
-                gr.Checkbox(visible=show_kyutai_cpu)
+                gr.Checkbox(visible=show_kyutai_cpu),
+                gr.Dropdown(visible=show_kyutai_mlx_quantization)
             ]
         
         # Event handlers
@@ -432,7 +445,7 @@ def create_interface():
         engine.change(
             fn=update_engine_options,
             inputs=[engine],
-            outputs=[openai_key, xtts_samples, speed, kyutai_cpu]
+            outputs=[openai_key, xtts_samples, speed, kyutai_cpu, kyutai_mlx_quantization]
         )
         
         convert_btn.click(
@@ -441,7 +454,7 @@ def create_interface():
                 epub_file, engine, speaker, start_chapter, end_chapter,
                 threads, output_format, bitrate, min_ratio, debug, skiplinks,
                 skipfootnotes, sayparts, no_deepspeed, skip_cleanup, openai_key,
-                xtts_samples, speed, kyutai_cpu
+                xtts_samples, speed, kyutai_cpu, kyutai_mlx_quantization
             ],
             outputs=[output],
             queue=True

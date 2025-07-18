@@ -42,8 +42,8 @@ import torch, gc
 import torchaudio
 import whisper
 import soundfile as sf
-
-
+from kyutai_mlx_tts import KyutaiMLXTTS
+from base_tts import Text2WaveFile
 
 namespaces = {
    "calibre":"http://calibre.kovidgoyal.net/2009/metadata",
@@ -53,52 +53,6 @@ namespaces = {
    "u":"urn:oasis:names:tc:opendocument:xmlns:container",
    "xsi":"http://www.w3.org/2001/XMLSchema-instance",
 }
-
-class Text2WaveFile:
-    whispermodel = None
-    debug = False
-    def __init__(self, config = {}):
-        """
-        initalizes a Text 2 Wave File class
-        This might mean loading the ML model used for speech syntesis or setting up other stuff
-        """
-        self.config = config
-
-    def proccess_text(self, text, wave_file_name):
-        """
-        takes a pice of text and generates audio from it then saves that audio in wave_file_name
-        returns True if successfull
-        """
-
-    def compare(self, text, wavfile):
-        if self.whispermodel is None:
-            self.whispermodel = whisper.load_model("tiny")
-        
-        result = self.whispermodel.transcribe(wavfile)
-        text = re.sub(" +", " ", text).lower().strip()
-        ratio = fuzz.ratio(text, result["text"].lower())
-        print(f"Transcript: {result['text'].lower()}") if self.debug else None
-        print(f"Text to transcript comparison ratio: {ratio}") if self.debug else None
-        return ratio, result['text']
-
-    
-    def proccess_text_retry(self, text, wave_file_name):
-        retries = 2
-        while retries > 0:
-            self.proccess_text(text, wave_file_name)
-            result_text = ""
-            if self.config['minratio'] == 0:
-                print("Skipping whisper transcript comparison") if self.config['debug'] else None
-                ratio = self.config['minratio']
-            else:
-                ratio, result_text = self.compare(text, wave_file_name)
-            if ratio < self.config['minratio']:
-                print(f"Spoken text did not sound right after control with whisper - {ratio}\nInput: {text}\nOutput: {result_text}")
-            else:
-                break
-            retries -= 1
-        if retries == 0:
-            print(f"Something is wrong with the audio acording to whisper ({ratio}): {wave_file_name}")
 
 class EdgeTTS(Text2WaveFile):
     def __init__(self, config = {}):
@@ -440,6 +394,7 @@ class EpubToAudiobook:
         skip_cleanup,
         audioformat,
         speed,
+        kyutai_mlx_quantization=None,
     ):
         self.source = source
         self.bookname = os.path.splitext(os.path.basename(source))[0]
@@ -464,6 +419,7 @@ class EpubToAudiobook:
         self.title = self.bookname
         self.author = "Unknown"
         self.audioformat = [i.lower() for i in audioformat.split(",")]
+        self.kyutai_mlx_quantization = kyutai_mlx_quantization
         if source.endswith(".epub"):
             self.book = epub.read_epub(source)
             self.sourcetype = "epub"
@@ -955,6 +911,11 @@ class EpubToAudiobook:
                 elif engine == "kyutai":
                     config['engine_cl'] = KyutaiTTS
                     config['minratio'] = 0
+                    
+                elif engine == "kyutai-mlx":
+                    config['engine_cl'] = KyutaiMLXTTS
+                    config['minratio'] = 0
+                    config['quantize'] = self.kyutai_mlx_quantization
 
                 elif engine == "tts":
                     config['engine_cl'] = org_TTS
@@ -1268,6 +1229,7 @@ def main():
         skip_cleanup=args.skip_cleanup,
         audioformat=args.audioformat,
         speed=args.speed,
+        kyutai_mlx_quantization=args.kyutai_mlx_quantization if hasattr(args, 'kyutai_mlx_quantization') else None,
     )
 
     print(f"Language selected: {mybook.language}")
