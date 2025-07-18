@@ -39,9 +39,9 @@ class KyutaiMLXTTS(Text2WaveFile):
                 - hf_repo: Hugging Face repo for models (default: DEFAULT_DSM_TTS_REPO)
                 - voice_repo: Hugging Face repo for voices (default: DEFAULT_DSM_TTS_VOICE_REPO)
         """
-        if 'voice' not in config:
+        if 'voice' not in config or config['voice'] is None:
             config['voice'] = "expresso/ex03-ex01_happy_001_channel1_334s.wav"
-        print(f"Voice: {config['voice']}")
+        print(f"Kyutai MLX voice: {config['voice']}")
         self.config = config
         
         self.temp = config.get('temp', 0.6)

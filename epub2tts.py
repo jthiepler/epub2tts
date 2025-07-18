@@ -939,6 +939,7 @@ class EpubToAudiobook:
                     config['minratio'] = 0
                     
                 elif engine == "kyutai-mlx":
+                    config['voice'] = speaker
                     config['engine_cl'] = KyutaiMLXTTS
                     config['minratio'] = 0
                     config['quantize'] = self.kyutai_mlx_quantization
