@@ -46,7 +46,7 @@ class Epub2TTSInterface:
     def convert_epub(self, epub_file, engine, speaker, start_chapter, end_chapter, 
                     threads, output_format, bitrate, min_ratio, debug, skiplinks, 
                     skipfootnotes, sayparts, no_deepspeed, skip_cleanup, openai_key, 
-                    xtts_samples, speed, progress=gr.Progress()):
+                    xtts_samples, speed, kyutai_cpu, progress=gr.Progress()):
         """Main conversion function with real-time output streaming"""
         
         if not epub_file:
@@ -315,6 +315,13 @@ def create_interface():
                         visible=False,
                         placeholder="path/to/sample1.wav,path/to/sample2.wav"
                     )
+                    
+                    kyutai_cpu = gr.Checkbox(
+                        label="Use CPU for Kyutai TTS",
+                        visible=False,
+                        value=False,
+                        info="Force CPU mode to avoid CUDA memory issues"
+                    )
                 
                 # Basic settings
                 with gr.Row():
@@ -407,10 +414,12 @@ def create_interface():
             show_openai = engine == "openai"
             show_xtts = engine == "xtts"
             show_speed = engine == "kokoro"
+            show_kyutai_cpu = engine == "kyutai"
             return [
                 gr.Textbox(visible=show_openai),
                 gr.Textbox(visible=show_xtts),
-                gr.Number(visible=show_speed)
+                gr.Number(visible=show_speed),
+                gr.Checkbox(visible=show_kyutai_cpu)
             ]
         
         # Event handlers
@@ -423,7 +432,7 @@ def create_interface():
         engine.change(
             fn=update_engine_options,
             inputs=[engine],
-            outputs=[openai_key, xtts_samples, speed]
+            outputs=[openai_key, xtts_samples, speed, kyutai_cpu]
         )
         
         convert_btn.click(
@@ -432,7 +441,7 @@ def create_interface():
                 epub_file, engine, speaker, start_chapter, end_chapter,
                 threads, output_format, bitrate, min_ratio, debug, skiplinks,
                 skipfootnotes, sayparts, no_deepspeed, skip_cleanup, openai_key,
-                xtts_samples, speed
+                xtts_samples, speed, kyutai_cpu
             ],
             outputs=[output],
             queue=True

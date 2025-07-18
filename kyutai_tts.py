@@ -20,7 +20,8 @@ class KyutaiTTS(Text2WaveFile):
         Args:
             config: Configuration dictionary with keys:
                 - voice: path to voice file (default: "expresso/ex03-ex01_happy_001_channel1_334s.wav")
-                - device: "cuda" or "cpu" (default: auto-detect)
+                - device: "cuda", "cpu", or "auto" (default: auto-detect)
+                - force_cpu: boolean to force CPU usage (default: False)
                 - temp: temperature for generation (default: 0.6)
                 - cfg_coef: CFG coefficient (default: 2.0)
                 - n_q: number of quantizers (default: 32)
@@ -30,14 +31,19 @@ class KyutaiTTS(Text2WaveFile):
         print(f"Voice:{config['voice']}")
         self.config = config
         
-        # Auto-detect device
-        if 'device' not in config:
-            if torch.cuda.is_available():
-                self.device = torch.device("cuda")
-            else:
-                self.device = torch.device("cpu")
+        # Force CPU mode - completely disable GPU
+        force_cpu = config.get('force_cpu', False)
+        if force_cpu:
+            # Explicitly disable CUDA
+            import os
+            os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+            torch.cuda.is_available = lambda: False
+            self.device = torch.device("cpu")
+            print("🖥️  Forcing CPU mode for Kyutai TTS - GPU disabled")
         else:
-            self.device = torch.device(config['device'])
+            # Still use CPU even if GPU is available
+            self.device = torch.device("cpu")
+            print("🖥️  Using CPU mode for Kyutai TTS")
         
         self.temp = config.get('temp', 0.6)
         self.cfg_coef = config.get('cfg_coef', 2.0)
