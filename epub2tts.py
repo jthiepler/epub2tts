@@ -349,8 +349,23 @@ def join_temp_files_to_chapter(tempfiles, outputwav):
 def process_book_chapter(dat):
     print("initiating chapter: ", dat['chapter'])
     tts_engine = dat['config']['engine_cl'](dat['config'])
-    for text, file_name in dat['sentene_job_que']:
-        tts_engine.proccess_text_retry(text, file_name)
+    
+    # Check if the engine is KyutaiMLXTTS and a callback is provided
+    if isinstance(tts_engine, KyutaiMLXTTS) and 'progress_callback' in dat:
+        # Since KyutaiMLXTTS handles chunking internally, we combine the text
+        full_text = " ".join([text for text, _ in dat['sentene_job_que']])
+        # The outputwav is the final chapter file, which is what tts_to_file expects
+        tts_engine.tts_to_file(full_text, dat['outputwav'], progress_callback=dat['progress_callback'])
+        # Since tts_to_file creates the final file, we can skip the timing generation for now.
+        # A more advanced implementation would get timing info from the callback.
+        with open(dat['outputwav']+".timing", "wb") as fp:
+            pickle.dump([], fp)
+        print("done chapter: ", dat['chapter'])
+        return dat['outputwav']
+    else:
+        for text, file_name in dat['sentene_job_que']:
+            tts_engine.proccess_text_retry(text, file_name)
+        join_temp_files_to_chapter(dat['tempfiles'], dat['outputwav'])
 
     text_timings = []
     time_ofset = 0
@@ -395,6 +410,7 @@ class EpubToAudiobook:
         audioformat,
         speed,
         kyutai_mlx_quantization=None,
+        progress_callback=None,
     ):
         self.source = source
         self.bookname = os.path.splitext(os.path.basename(source))[0]
@@ -420,6 +436,7 @@ class EpubToAudiobook:
         self.author = "Unknown"
         self.audioformat = [i.lower() for i in audioformat.split(",")]
         self.kyutai_mlx_quantization = kyutai_mlx_quantization
+        self.progress_callback = progress_callback
         if source.endswith(".epub"):
             self.book = epub.read_epub(source)
             self.sourcetype = "epub"
@@ -812,7 +829,7 @@ class EpubToAudiobook:
 
         text = '\n'.join(lines)   # Join the lines back
         return metadata, text
-    def read_book(self, voice_samples, engine, openai, model_name, speaker, bitrate):
+    def read_book(self, voice_samples, engine, openai, model_name, speaker, bitrate, progress_callback=None):
         self.model_name = model_name
         self.openai = openai
         self.voice_samples = None
@@ -948,11 +965,25 @@ class EpubToAudiobook:
                     else:
                         sentene_job_que.append((sentence_groups[x], tempwav))
                     tempfiles.append(tempwav)
-                chapter_job_que.append(({'config': config, 'tempfiles': tempfiles, 'sentene_job_que': sentene_job_que, 'outputwav': outputwav, 'chapter': chapter_name}))
+                job_data = {
+                    'config': config,
+                    'tempfiles': tempfiles,
+                    'sentene_job_que': sentene_job_que,
+                    'outputwav': outputwav,
+                    'chapter': chapter_name
+                }
+                if self.progress_callback and engine == 'kyutai-mlx':
+                    job_data['progress_callback'] = self.progress_callback
+                chapter_job_que.append(job_data)
 
         print("initiating work:")
         
-        if self.device == 'cuda':
+        # If a progress callback is provided (i.e., we're in Gradio), run sequentially
+        if self.progress_callback and engine == 'kyutai-mlx':
+            print("Running in sequential mode for progress updates.")
+            for job in chapter_job_que:
+                process_book_chapter(job)
+        elif self.device == 'cuda':
             map_result = list(map(process_book_chapter, chapter_job_que))
         else:
             pool = mp.Pool(processes=self.threads)
@@ -1263,14 +1294,14 @@ def main():
         )
         sys.exit()
 
-    mybook.read_book(
-        voice_samples=args.xtts,
-        engine=args.engine,
-        openai=args.openai,
-        model_name=args.model,
-        speaker=speaker,
-        bitrate=args.bitrate,
-    )
+        mybook.read_book(
+            voice_samples=args.xtts,
+            engine=args.engine,
+            openai=args.openai,
+            model_name=args.model,
+            speaker=speaker,
+            bitrate=args.bitrate,
+        )
     if args.cover is not None:
         mybook.add_cover(args.cover)
 

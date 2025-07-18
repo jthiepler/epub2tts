@@ -50,8 +50,18 @@ class Epub2TTSInterface:
                     xtts_samples, speed, kyutai_cpu, kyutai_mlx_quantization, progress=gr.Progress()):
         """Main conversion function with real-time output streaming"""
         
+        # This is a dictionary to hold the latest progress info
+        progress_info = {"eta": "N/A", "realtime_factor": "N/A", "log": ""}
+
+        def progress_callback(update):
+            progress(update["processed"] / update["total"], desc=f"Processing chunk {update['processed']}/{update['total']}")
+            eta_min, eta_sec = divmod(update['eta'], 60)
+            progress_info["eta"] = f"{int(eta_min)}m {int(eta_sec)}s"
+            progress_info["realtime_factor"] = f"{update['realtime_factor']:.2f}x"
+
         if not epub_file:
-            yield "Error: Please select an EPUB file"
+            progress_info["log"] = "Error: Please select an EPUB file"
+            yield progress_info["log"], "N/A", "N/A"
             return
         
         # Clean up any existing temporary files
@@ -119,10 +129,12 @@ class Epub2TTSInterface:
                 audioformat=args.audioformat,
                 speed=args.speed,
                 kyutai_mlx_quantization=kyutai_mlx_quantization,
+                progress_callback=progress_callback if engine == 'kyutai-mlx' else None,
             )
             
             # Get chapters
-            yield "📖 Analyzing book structure...\n"
+            progress_info["log"] += "📖 Analyzing book structure...\n"
+            yield progress_info["log"], progress_info["eta"], progress_info["realtime_factor"]
             if mybook.sourcetype == "epub":
                 mybook.get_chapters_epub(speaker=speaker)
             else:
@@ -132,8 +144,9 @@ class Epub2TTSInterface:
             if end_chapter == 999:
                 end_chapter = len(mybook.chapters_to_read)
             
-            yield f"📊 Found {len(mybook.chapters_to_read)} chapters to process\n"
-            yield f"🎯 Processing chapters {start_chapter} to {end_chapter}\n"
+            progress_info["log"] += f"📊 Found {len(mybook.chapters_to_read)} chapters to process\n"
+            progress_info["log"] += f"🎯 Processing chapters {start_chapter} to {end_chapter}\n"
+            yield progress_info["log"], progress_info["eta"], progress_info["realtime_factor"]
             
             # Check if we need to overwrite existing files
             book_name = os.path.splitext(os.path.basename(epub_path))[0]
@@ -175,11 +188,8 @@ class Epub2TTSInterface:
             sys.stderr = stderr_stream
             
             try:
-                yield "🚀 Starting conversion...\n"
-                
-                # Start conversion in a way that allows streaming
-                import threading
-                import queue
+                progress_info["log"] += "🚀 Starting conversion...\n"
+                yield progress_info["log"], progress_info["eta"], progress_info["realtime_factor"]
                 
                 result_queue = queue.Queue()
                 
@@ -197,37 +207,38 @@ class Epub2TTSInterface:
                     except Exception as e:
                         result_queue.put(("error", str(e)))
                 
-                # Start conversion in background thread
                 conversion_thread = threading.Thread(target=run_conversion)
                 conversion_thread.daemon = True
                 conversion_thread.start()
                 
-                # Stream output while conversion runs
                 last_line_count = 0
                 while conversion_thread.is_alive():
                     current_lines = len(output_lines)
                     if current_lines > last_line_count:
                         new_lines = output_lines[last_line_count:current_lines]
-                        for line in new_lines:
-                            yield line
+                        progress_info["log"] += "".join(new_lines)
                         last_line_count = current_lines
-                    time.sleep(0.1)
+                    
+                    yield progress_info["log"], progress_info["eta"], progress_info["realtime_factor"]
+                    time.sleep(0.2)
                 
-                # Check for final result
                 try:
                     status, error_msg = result_queue.get_nowait()
                     if status == "error":
-                        yield f"❌ Error: {error_msg}\n"
+                        progress_info["log"] += f"❌ Error: {error_msg}\n"
+                        yield progress_info["log"], progress_info["eta"], progress_info["realtime_factor"]
                         return
                 except queue.Empty:
                     pass
                 
-                # Final check
                 if os.path.exists(output_filename):
-                    yield f"\n✅ Conversion completed successfully!\n"
-                    yield f"📁 Output file: {output_filename}\n"
+                    progress_info["log"] += f"\n✅ Conversion completed successfully!\n"
+                    progress_info["log"] += f"📁 Output file: {output_filename}\n"
                 else:
-                    yield f"\n❌ Conversion may have failed - output file not found\n"
+                    progress_info["log"] += f"\n❌ Conversion may have failed - output file not found\n"
+                
+                progress(1, desc="Completed")
+                yield progress_info["log"], "Done", "N/A"
                     
             finally:
                 # Restore stdout/stderr
@@ -235,8 +246,9 @@ class Epub2TTSInterface:
                 sys.stderr = old_stderr
                 
         except Exception as e:
-            yield f"❌ Error during conversion: {str(e)}\n"
-            yield "Please check the configuration and try again."
+            error_log = f"❌ Error during conversion: {str(e)}\n"
+            error_log += "Please check the configuration and try again."
+            yield error_log, "Error", "N/A"
     
     def cleanup_temp_files(self):
         """Clean up temporary files from previous runs"""
@@ -413,6 +425,13 @@ def create_interface():
                     interactive=False
                 )
                 
+                # Progress indicators
+                with gr.Group():
+                    gr.Label("Overall Progress")
+                    progress_bar = gr.Progress()
+                    eta_display = gr.Textbox(label="ETA", interactive=False)
+                    realtime_display = gr.Textbox(label="Real-time Factor", interactive=False)
+
                 # Download button (will be updated after conversion)
                 download_btn = gr.File(label="Download Audiobook", visible=False)
         
@@ -456,7 +475,7 @@ def create_interface():
                 skipfootnotes, sayparts, no_deepspeed, skip_cleanup, openai_key,
                 xtts_samples, speed, kyutai_cpu, kyutai_mlx_quantization
             ],
-            outputs=[output],
+            outputs=[output, eta_display, realtime_display],
             queue=True
         )
     

@@ -128,73 +128,95 @@ class KyutaiMLXTTS(Text2WaveFile):
             
         self.cfg_coef_conditioning = cfg_coef_conditioning
 
-    def proccess_text(self, text, wave_file_name):
+    def tts_to_file(self, text: str, wave_file_name: str, progress_callback=None):
         """
-        Convert text to speech using Kyutai MLX TTS
+        Synthesize text to an audio file with progress updates.
         
         Args:
-            text: Text to synthesize
-            wave_file_name: Output file path
-            
-        Returns:
-            bool: True if successful
+            text (str): Text to synthesize.
+            wave_file_name (str): Path to save the output audio file.
+            progress_callback (Optional[callable]): Callback for progress updates.
         """
         try:
-            # Prepare the script
-            all_entries = [self.tts_model.prepare_script([text])]
+            # Simple sentence splitting for chunking
+            sentences = [s.strip() for s in text.split('.') if s.strip()]
+            total_chunks = len(sentences)
+            processed_chunks = 0
+            chunk_times = []
             
-            # Handle voice selection
+            # Prepare voice
             if self.tts_model.multi_speaker:
                 voices = [self.tts_model.get_voice_path(self.config['voice'])]
             else:
                 voices = []
-                
+
             # Create condition attributes
-            all_attributes = [
-                self.tts_model.make_condition_attributes(voices, self.cfg_coef_conditioning)
-            ]
-
-            # Audio frames queue
-            wav_frames = queue.Queue()
-            pcms = []
-
-            def _on_frame(frame):
-                """Callback for audio frames"""
-                if (frame != -1).all():
-                    pcm = self.tts_model.mimi.decode_step(frame[:, :, None])
-                    pcm = np.array(mx.clip(pcm[0, 0], -1, 1))
-                    wav_frames.put_nowait(pcm)
-                    pcms.append(pcm)
-
-            # Generate audio
-            print("🎤 Generating audio...")
-            begin = time.time()
+            attributes = self.tts_model.make_condition_attributes(voices, self.cfg_coef_conditioning)
             
-            result = self.tts_model.generate(
-                all_entries,
-                all_attributes,
-                cfg_is_no_prefix=self.cfg_is_no_prefix,
-                cfg_is_no_text=self.cfg_is_no_text,
-                on_frame=_on_frame,
-            )
+            all_pcms = []
+            total_audio_duration = 0
             
-            # Calculate performance metrics
-            frames = mx.concat(result.frames, axis=-1)
-            total_duration = frames.shape[0] * frames.shape[-1] / self.tts_model.mimi.frame_rate
-            time_taken = time.time() - begin
-            total_speed = total_duration / time_taken
-            
-            print(f"✅ Generated audio in {time_taken:.2f}s ({total_speed:.2f}x real-time)")
+            print(f"🎤 Generating audio from {total_chunks} chunks...")
+            start_time = time.time()
 
-            # Save audio
-            if pcms:
-                audio = np.concatenate(pcms, axis=-1)
-                sphn.write_wav(wave_file_name, audio, self.tts_model.mimi.sample_rate)
+            for i, sentence in enumerate(sentences):
+                chunk_start_time = time.time()
+                
+                # Prepare script for the current chunk
+                entries = self.tts_model.prepare_script([sentence])
+                
+                pcms = []
+                def _on_frame(frame):
+                    if (frame != -1).all():
+                        pcm = self.tts_model.mimi.decode_step(frame[:, :, None])
+                        pcm = np.array(mx.clip(pcm[0, 0], -1, 1))
+                        pcms.append(pcm)
+
+                # Generate audio for the chunk
+                result = self.tts_model.generate(
+                    [entries],
+                    [attributes],
+                    cfg_is_no_prefix=self.cfg_is_no_prefix,
+                    cfg_is_no_text=self.cfg_is_no_text,
+                    on_frame=_on_frame,
+                )
+                
+                if pcms:
+                    audio_chunk = np.concatenate(pcms, axis=-1)
+                    all_pcms.append(audio_chunk)
+                    
+                    # Update progress
+                    processed_chunks += 1
+                    chunk_time = time.time() - chunk_start_time
+                    chunk_times.append(chunk_time)
+                    
+                    # Calculate metrics
+                    elapsed_time = time.time() - start_time
+                    avg_chunk_time = sum(chunk_times) / len(chunk_times)
+                    remaining_chunks = total_chunks - processed_chunks
+                    eta = avg_chunk_time * remaining_chunks
+                    
+                    chunk_audio_duration = len(audio_chunk) / self.tts_model.mimi.sample_rate
+                    total_audio_duration += chunk_audio_duration
+                    realtime_factor = total_audio_duration / elapsed_time if elapsed_time > 0 else 0
+                    
+                    if progress_callback:
+                        progress_callback({
+                            "processed": processed_chunks,
+                            "total": total_chunks,
+                            "eta": eta,
+                            "realtime_factor": realtime_factor,
+                        })
+
+            if all_pcms:
+                final_audio = np.concatenate(all_pcms, axis=-1)
+                sphn.write_wav(wave_file_name, final_audio, self.tts_model.mimi.sample_rate)
+                print(f"✅ Audio saved to {wave_file_name}")
                 return os.path.exists(wave_file_name)
             else:
-                print("❌ No audio generated")
+                print("❌ No audio generated.")
                 return False
-                
+
         except Exception as e:
             print(f"❌ Error in Kyutai MLX TTS: {str(e)}")
             return False
@@ -220,5 +242,17 @@ if __name__ == "__main__":
         'quantize': 8  # Optional: 8-bit quantization
     })
     
-    success = tts.proccess_text("Hello, this is a test of the Kyutai MLX TTS system.", "test_output.wav")
+    def progress_update(progress_info):
+        eta_min, eta_sec = divmod(progress_info['eta'], 60)
+        print(
+            f"[{progress_info['processed']}/{progress_info['total']}] "
+            f"ETA: {int(eta_min)}m {int(eta_sec)}s "
+            f"({progress_info['realtime_factor']:.2f}x real-time)"
+        )
+
+    success = tts.tts_to_file(
+        "Hello, this is a test of the Kyutai MLX TTS system. This is a second sentence to test chunking.",
+        "test_output.wav",
+        progress_callback=progress_update
+    )
     print(f"Success: {success}")
