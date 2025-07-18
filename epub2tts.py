@@ -844,9 +844,18 @@ class EpubToAudiobook:
             else:
                 voice_name = "-" + speaker.replace(" ", "-").lower()
         else:
-            voice_name = "-" + speaker
-        self.output_filename = re.sub(".m4b", voice_name + ".m4b", self.output_filename)
+            # Sanitize speaker name to be a valid filename component
+            sanitized_speaker = speaker.replace('/', '_').replace('\\', '_')
+            voice_name = "-" + sanitized_speaker
+        
+        self.output_filename = re.sub(r"\.m4b$", voice_name + ".m4b", self.bookname + ".m4b")
         print(f"Saving to {self.output_filename}")
+        
+        # Ensure the output directory exists
+        output_dir = os.path.dirname(self.output_filename)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            
         self.check_for_file(self.output_filename)
         total_chars = self.get_length(self.start, self.end, self.chapters_to_read)
         print(f"Total characters: {total_chars}")
