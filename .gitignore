@@ -25,4 +25,8 @@ pip-log.txt
 .coverage
 .tox
 *.wav
+*.srt
+*.m4b
+*.epub
+*.txt
 .python-version

@@ -4,6 +4,7 @@ deepspeed
 ebooklib
 edge-tts
 fuzzywuzzy
+gradio
 kokoro
 lxml
 mutagen

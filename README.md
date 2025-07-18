@@ -20,9 +20,50 @@ NOTE: If you are using this with Coqui for voice cloning, I urge you to check ou
 **NOTE:** Check out [epub2tts-edge](https://github.com/aedocw/epub2tts-edge/) for a VERY fast lightweight alternative that only works with MS Edge. That version reads multiple sentences in parallel and goes much quicker!
 
 
-## 📖 Usage
+## 🖥️ Gradio Web Interface
+
+You can now use epub2tts through a web interface! This provides a user-friendly way to convert EPUB files to audiobooks without using the command line.
+
+### Using the Gradio Interface
+
+1. **Install dependencies** (if not already done):
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Launch the interface**:
+   ```bash
+   python3 run_gradio.py
+   ```
+   Or use the shell script:
+   ```bash
+   ./run_gradio.sh
+   ```
+
+3. **Access the web interface** at http://localhost:7860
+
+### Features of the Web Interface
+
+- **File Upload**: Drag and drop EPUB or TXT files
+- **Engine Selection**: Choose from TTS, XTTS, OpenAI, Edge, or Kokoro engines
+- **Dynamic Speaker Selection**: Speakers update based on selected engine
+- **Chapter Range**: Specify start and end chapters
+- **Output Format**: Choose between M4B, WAV, or FLAC
+- **Advanced Options**: All CLI options available through checkboxes and inputs
+- **Real-time Logging**: See conversion progress in real-time
+
+### Web Interface Screenshots
+
+The interface includes:
+- File upload area for EPUB/TXT files
+- Dropdown menus for engine and speaker selection
+- Number inputs for chapter range and threads
+- Advanced options in collapsible accordion
+- Real-time conversion logs
+
+## 📖 CLI Usage
 <details>
-<summary> Usage instructions</summary>
+<summary> Command Line Usage instructions</summary>
 
 ## Extract epub contents to text:
 1. `epub2tts mybook.epub --export txt`
