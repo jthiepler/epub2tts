@@ -11,6 +11,7 @@ import tempfile
 import threading
 import queue
 import io
+import time
 from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 import argparse
@@ -38,10 +39,11 @@ class Epub2TTSInterface:
                     threads, output_format, bitrate, min_ratio, debug, skiplinks, 
                     skipfootnotes, sayparts, no_deepspeed, skip_cleanup, openai_key, 
                     xtts_samples, speed, progress=gr.Progress()):
-        """Main conversion function"""
+        """Main conversion function with real-time output streaming"""
         
         if not epub_file:
-            return "Error: Please select an EPUB file"
+            yield "Error: Please select an EPUB file"
+            return
         
         # Clean up any existing temporary files
         self.cleanup_temp_files()
@@ -55,10 +57,12 @@ class Epub2TTSInterface:
             
             # Validate file
             if not os.path.exists(epub_path):
-                return f"Error: File {epub_path} not found"
+                yield f"Error: File {epub_path} not found"
+                return
             
             if not epub_path.lower().endswith(('.epub', '.txt')):
-                return "Error: Please select a valid EPUB or TXT file"
+                yield "Error: Please select a valid EPUB or TXT file"
+                return
             
             # Prepare arguments
             args = argparse.Namespace()
@@ -86,9 +90,6 @@ class Epub2TTSInterface:
             args.export = None
             args.cover = None
             
-            # Capture output
-            output_buffer = io.StringIO()
-            
             # Create audiobook
             mybook = EpubToAudiobook(
                 source=args.sourcefile,
@@ -110,6 +111,7 @@ class Epub2TTSInterface:
             )
             
             # Get chapters
+            yield "📖 Analyzing book structure...\n"
             if mybook.sourcetype == "epub":
                 mybook.get_chapters_epub(speaker=speaker)
             else:
@@ -119,6 +121,9 @@ class Epub2TTSInterface:
             if end_chapter == 999:
                 end_chapter = len(mybook.chapters_to_read)
             
+            yield f"📊 Found {len(mybook.chapters_to_read)} chapters to process\n"
+            yield f"🎯 Processing chapters {start_chapter} to {end_chapter}\n"
+            
             # Check if we need to overwrite existing files
             book_name = os.path.splitext(os.path.basename(epub_path))[0]
             voice_suffix = f"-{speaker.replace(' ', '-').lower()}"
@@ -127,27 +132,100 @@ class Epub2TTSInterface:
             # Clean up any existing partial files
             self.cleanup_existing_files(book_name, speaker)
             
-            # Start conversion
-            with redirect_stdout(output_buffer), redirect_stderr(output_buffer):
-                mybook.read_book(
-                    voice_samples=args.xtts,
-                    engine=args.engine,
-                    openai=args.openai,
-                    model_name=args.model,
-                    speaker=speaker,
-                    bitrate=args.bitrate,
-                )
+            # Create a more sophisticated output capture
+            output_lines = []
             
-            output = output_buffer.getvalue()
+            class StreamingOutput:
+                def __init__(self, original_stream):
+                    self.original_stream = original_stream
+                    self.buffer = ""
+                
+                def write(self, text):
+                    if text.strip():
+                        self.original_stream.write(text)
+                        self.original_stream.flush()
+                        output_lines.append(text)
+                
+                def flush(self):
+                    self.original_stream.flush()
+                
+                def isatty(self):
+                    return False
             
-            # Check if output file was created
-            if os.path.exists(output_filename):
-                return f"Conversion completed successfully!\n\nOutput file: {output_filename}\n\nLog:\n{output}"
-            else:
-                return f"Conversion may have failed. Check log:\n{output}"
+            # Redirect stdout and stderr
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            
+            # Create streaming outputs
+            stdout_stream = StreamingOutput(old_stdout)
+            stderr_stream = StreamingOutput(old_stderr)
+            
+            sys.stdout = stdout_stream
+            sys.stderr = stderr_stream
+            
+            try:
+                yield "🚀 Starting conversion...\n"
+                
+                # Start conversion in a way that allows streaming
+                import threading
+                import queue
+                
+                result_queue = queue.Queue()
+                
+                def run_conversion():
+                    try:
+                        mybook.read_book(
+                            voice_samples=args.xtts,
+                            engine=args.engine,
+                            openai=args.openai,
+                            model_name=args.model,
+                            speaker=speaker,
+                            bitrate=args.bitrate,
+                        )
+                        result_queue.put(("success", None))
+                    except Exception as e:
+                        result_queue.put(("error", str(e)))
+                
+                # Start conversion in background thread
+                conversion_thread = threading.Thread(target=run_conversion)
+                conversion_thread.daemon = True
+                conversion_thread.start()
+                
+                # Stream output while conversion runs
+                last_line_count = 0
+                while conversion_thread.is_alive():
+                    current_lines = len(output_lines)
+                    if current_lines > last_line_count:
+                        new_lines = output_lines[last_line_count:current_lines]
+                        for line in new_lines:
+                            yield line
+                        last_line_count = current_lines
+                    time.sleep(0.1)
+                
+                # Check for final result
+                try:
+                    status, error_msg = result_queue.get_nowait()
+                    if status == "error":
+                        yield f"❌ Error: {error_msg}\n"
+                        return
+                except queue.Empty:
+                    pass
+                
+                # Final check
+                if os.path.exists(output_filename):
+                    yield f"\n✅ Conversion completed successfully!\n"
+                    yield f"📁 Output file: {output_filename}\n"
+                else:
+                    yield f"\n❌ Conversion may have failed - output file not found\n"
+                    
+            finally:
+                # Restore stdout/stderr
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
                 
         except Exception as e:
-            return f"Error during conversion: {str(e)}\n\nPlease check the log above for details."
+            yield f"❌ Error during conversion: {str(e)}\n"
+            yield "Please check the configuration and try again."
     
     def cleanup_temp_files(self):
         """Clean up temporary files from previous runs"""
@@ -348,7 +426,8 @@ def create_interface():
                 skipfootnotes, sayparts, no_deepspeed, skip_cleanup, openai_key,
                 xtts_samples, speed
             ],
-            outputs=[output]
+            outputs=[output],
+            queue=True
         )
     
     return app
