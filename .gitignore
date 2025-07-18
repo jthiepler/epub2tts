@@ -29,4 +29,5 @@ pip-log.txt
 *.m4b
 *.epub
 *.txt
+*.timing
 .python-version

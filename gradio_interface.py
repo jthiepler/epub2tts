@@ -17,12 +17,20 @@ from pathlib import Path
 import argparse
 from epub2tts import EpubToAudiobook
 
+# Import Kyutai voice loader
+try:
+    from kyutai_voice_loader import get_kyutai_voices
+    KYUTAI_VOICES = get_kyutai_voices()
+except ImportError:
+    KYUTAI_VOICES = ["af", "am", "bf", "bm"]
+
 # Available engines and their speakers
 ENGINE_SPEAKERS = {
     "tts": ["p335", "p307", "p225", "p226", "p227", "p228", "p229", "p230", "p231", "p232", "p233", "p234", "p236", "p237", "p238", "p239", "p240", "p241", "p243", "p244", "p245", "p246", "p247", "p248", "p249", "p250", "p251", "p252", "p253", "p254", "p255", "p256", "p257", "p258", "p259", "p260", "p261", "p262", "p263", "p264", "p265", "p266", "p267", "p268", "p269", "p270", "p271", "p272", "p273", "p274", "p275", "p276", "p277", "p278", "p279", "p280", "p281", "p282", "p283", "p284", "p285", "p286", "p287", "p288", "p289", "p290", "p291", "p292", "p293", "p294", "p295", "p296", "p297", "p298", "p299", "p300", "p301", "p302", "p303", "p304", "p305", "p306", "p308", "p309", "p310", "p311", "p312", "p313", "p314", "p315", "p316", "p317", "p318", "p319", "p320", "p321", "p322", "p323", "p324", "p325", "p326", "p327", "p328", "p329", "p330", "p331", "p332", "p333", "p334", "p336", "p337", "p338", "p339", "p340", "p341", "p342", "p343", "p344", "p345", "p346", "p347", "p348", "p349", "p350", "p351", "p352", "p353", "p354", "p355", "p356", "p357", "p358", "p359", "p360", "p361", "p362", "p363", "p364", "p365", "p366", "p367", "p368", "p369", "p370", "p371", "p372", "p373", "p374", "p375", "p376", "p377", "p378", "p379", "p380", "p381", "p382", "p383", "p384", "p385", "p386", "p387", "p388", "p389", "p390", "p391", "p392", "p393", "p394", "p395", "p396", "p397", "p398", "p399"],
     "openai": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
     "edge": ["en-US-AriaNeural", "en-US-JennyNeural", "en-US-GuyNeural", "en-US-AriaRUS", "en-US-BenjaminRUS", "en-US-GuyRUS", "en-US-ZiraRUS", "en-US-JessaRUS", "en-US-Jessa24kRUS", "en-US-Sean", "en-US-Jason", "en-US-Cora", "en-US-Jane", "en-US-Tony", "en-US-Amber", "en-US-Ana", "en-US-Ashley", "en-US-Brandon", "en-US-Christopher", "en-US-Davis", "en-US-Elizabeth", "en-US-Jacob", "en-US-JennyMultilingualNeural", "en-US-Michelle", "en-US-Monica", "en-US-Roger", "en-US-Steffan", "en-US-AndrewNeural", "en-US-EmmaNeural", "en-US-BrianNeural", "en-US-AriaNeural", "en-US-JennyNeural", "en-US-GuyNeural"],
     "kokoro": ["af_sky", "af_bella", "af_sarah", "am_adam", "bf_emma", "bm_george", "af_nicole", "am_michael", "af_sky", "af_bella", "af_sarah", "am_adam", "bf_emma", "bm_george", "af_nicole", "am_michael"],
+    "kyutai": KYUTAI_VOICES,
     "xtts": ["Claribel Dervla", "Daisy Studious", "Gracie Wise", "Tammie Ema", "Alison Dietlinde", "Ana Florence", "Annmarie Nele", "Asya Anara", "Brenda Stern", "Gitta Nikolina", "Henriette Usha", "Sofia Hellen", "Tammy Grit", "Tanja Adelina", "Vjollca Johnnie", "Andrew Chipper", "Badr Odhiambo", "Dionisio Schuyler", "Royston Min", "Viktor Eka", "Abrahan Mack", "Adde Michal", "Baldur Sanjin", "Craig Gutsy", "Damien Black", "Gilberto Mathias", "Ilkin Urbano", "Kazuhiko Atallah", "Ludvig Milivoj", "Suad Qasim", "Torcull Diarmuid", "Viktor Menelaos", "Zacharie Aimilios"]
 }
 

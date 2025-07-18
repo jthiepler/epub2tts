@@ -26,3 +26,4 @@ torchaudio
 tqdm
 transformers==4.40.2
 unidecode
+moshi

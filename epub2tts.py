@@ -335,6 +335,25 @@ class org_TTS(Text2WaveFile):
             self.tts.tts_to_file(
                 text=text, file_path=wave_file_name
             )
+
+class KyutaiTTS(Text2WaveFile):
+    def __init__(self, config = {}):
+        if 'speaker' not in config:
+            raise Exception('no speaker configured for Kyutai TTS')
+        
+        self.config = config
+        
+        try:
+            from kyutai_tts import KyutaiTTS as KyutaiEngine
+            
+            # The speaker is already in the correct format (e.g., "expresso/voice.wav")
+            voice_config = {'voice': config['speaker']}
+            self.engine = KyutaiEngine(voice_config)
+        except ImportError as e:
+            raise Exception(f"Kyutai TTS not available: {str(e)}. Install with: pip install moshi")
+
+    def proccess_text(self, text, wave_file_name):
+        return self.engine.proccess_text(text, wave_file_name)
            
 def get_duration(file_path):
     audio = AudioSegment.from_file(file_path)
@@ -933,6 +952,10 @@ class EpubToAudiobook:
                     config['engine_cl'] = Kokoro_TTS
                     config['minratio'] = 0
 
+                elif engine == "kyutai":
+                    config['engine_cl'] = KyutaiTTS
+                    config['minratio'] = 0
+
                 elif engine == "tts":
                     config['engine_cl'] = org_TTS
 
@@ -1092,7 +1115,7 @@ def main():
         default="tts",
         nargs="?",
         const="tts",
-        help="Which TTS to use [tts|xtts|openai|edge|kokoro]",
+        help="Which TTS to use [tts|xtts|openai|edge|kokoro|kyutai]",
     )
     parser.add_argument(
         "--xtts",
